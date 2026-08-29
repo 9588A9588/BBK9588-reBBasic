@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out BBK 9588 SDK
+        uses: actions/checkout@v4
+        with:
+          repository: HelloClyde/bbk9588-bda-sdk
+          path: sdk-root
+
+      - name: Check out reBBasic
+        uses: actions/checkout@v4
+        with:
+          path: sdk-root/re-bbasic
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SDK package
+        working-directory: sdk-root
+        run: python -m pip install -e .
+
+      - name: Cache MIPS toolchain
+        uses: actions/cache@v4
+        with:
+          path: sdk-root/.toolchain
+          key: mipsel-none-elf-15.2.0-8ba866e25c9826ee-full-v1
+
+      - name: Install verified MIPS toolchain
+        working-directory: sdk-root
+        shell: pwsh
+        run: .\scripts\setup_toolchain.ps1
+
+      - name: Run host regression tests
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        run: .\tests\run.ps1
+
+      - name: Build BDA
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Validate BDA
+        working-directory: sdk-root
+        run: python -m bda_packer.validate ".\re-bbasic\build\BB虚拟机-re.bda"
+
+      - name: Check repository diff
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        run: |
+          git diff --check
+          $status = git status --short
+          if ($status) {
+            $status
+            throw "Tests or build changed tracked repository files."
+          }
+
+      - name: Upload BDA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BBK9588-reBBasic-${{ github.sha }}
+          path: sdk-root/re-bbasic/build/BB虚拟机-re.bda
+          if-no-files-found: error

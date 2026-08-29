@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out BBK 9588 SDK
+        uses: actions/checkout@v4
+        with:
+          repository: HelloClyde/bbk9588-bda-sdk
+          path: sdk-root
+
+      - name: Check out tagged reBBasic source
+        uses: actions/checkout@v4
+        with:
+          path: sdk-root/re-bbasic
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SDK package
+        working-directory: sdk-root
+        run: python -m pip install -e .
+
+      - name: Cache MIPS toolchain
+        uses: actions/cache@v4
+        with:
+          path: sdk-root/.toolchain
+          key: mipsel-none-elf-15.2.0-8ba866e25c9826ee-full-v1
+
+      - name: Install verified MIPS toolchain
+        working-directory: sdk-root
+        shell: pwsh
+        run: .\scripts\setup_toolchain.ps1
+
+      - name: Test and build release BDA
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        run: |
+          .\tests\run.ps1
+          .\build.ps1 -o .\dist\BBK9588-reBBasic.bda
+
+      - name: Validate and checksum release files
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        run: |
+          python -m bda_packer.validate .\dist\BBK9588-reBBasic.bda
+          $item = Get-FileHash .\dist\BBK9588-reBBasic.bda -Algorithm SHA256
+          "$($item.Hash.ToLowerInvariant())  BBK9588-reBBasic.bda" |
+            Set-Content .\dist\SHA256SUMS.txt -Encoding ascii
+
+      - name: Publish GitHub Release
+        working-directory: sdk-root/re-bbasic
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assets = @(
+            ".\dist\BBK9588-reBBasic.bda",
+            ".\dist\SHA256SUMS.txt"
+          )
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --verify-tag --generate-notes `
+              --title "BBK9588-reBBasic $tag"
+          }

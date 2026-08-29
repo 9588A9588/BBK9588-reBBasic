@@ -1,0 +1,11 @@
+build/*
+docs/images/
+tests/__pycache__/
+tools/__pycache__/
+!tests/fixtures/*.bin
+.idea/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
