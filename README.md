@@ -12,13 +12,23 @@ BBASIC 程序能够继续运行，而不是让生成文件与原 BDA 字节一�
 > 独立、非官方项目，与 BBK 或设备制造商没有隶属或背书关系。仓库不包含原版
 > `BB虚拟机.bda`、固件、NAND、商业游戏或第三方 `BIN`/`LIB`/`SAV` 资源。
 
-## 截图
+## 自有测试截图
 
 | 图形页、翻页与几何图元 | 触摸输入键盘 |
 |---|---|
 | ![BBASIC graphics smoke test](qa/emulator-smoke.png) | ![BBASIC touch keyboard](qa/input-keyboard.png) |
 
 两张截图均来自仓库自带、可重新生成的测试程序，不依赖原机或第三方游戏素材。
+
+## 游戏兼容性截图
+
+| Flappy Bird | Rich / 大富翁 |
+|---|---|
+| ![Flappy Bird compatibility test](qa/compatibility/flappy-bird.png) | ![Rich Monopoly compatibility test](qa/compatibility/rich-monopoly.png) |
+
+截图来自 9588 QEMU 固件中的功能回归，只用于说明兼容性。游戏名称、画面和美术素材
+归各自权利人所有，不适用本仓库的 Apache-2.0 许可；游戏本体及 `BIN`/`LIB`/`SAV`
+资源不随仓库或 Release 分发。
 
 ## 当前状态
 
