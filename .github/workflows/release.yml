@@ -54,7 +54,11 @@ jobs:
         shell: pwsh
         run: |
           .\tests\run.ps1
-          .\build.ps1 -o .\dist\BBK9588-reBBasic.bda
+          $output = Join-Path (Get-Location) "dist\BBK9588-reBBasic.bda"
+          .\build.ps1 -o $output
+          if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
+            throw "Release BDA was not generated: $output"
+          }
 
       - name: Validate and checksum release files
         working-directory: sdk-root/re-bbasic
@@ -72,14 +76,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          $repo = $env:GITHUB_REPOSITORY
           $assets = @(
             ".\dist\BBK9588-reBBasic.bda",
             ".\dist\SHA256SUMS.txt"
           )
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag @assets --clobber
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $tag --repo $repo *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($releaseExists) {
+            gh release upload $tag @assets --clobber --repo $repo
           } else {
             gh release create $tag @assets --verify-tag --generate-notes `
-              --title "BBK9588-reBBasic $tag"
+              --title "BBK9588-reBBasic $tag" --repo $repo
           }
