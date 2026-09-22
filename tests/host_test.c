@@ -3,6 +3,7 @@
 #include <string.h>
 #include "bbvm.h"
 #include "bbvm_lib.h"
+#include "bbvm_pixels.h"
 
 static void *host_alloc(void *opaque, bb_u32 size) { (void)opaque; return malloc(size); }
 static void host_free(void *opaque, void *p) { (void)opaque; free(p); }
@@ -24,12 +25,38 @@ static void expect(int truth, const char *message) {
     if (!truth) { fprintf(stderr, "FAIL: %s\n", message); exit(1); }
 }
 
+static void test_pixel_copies(void) {
+    bb_u16 original[36], actual[36], expected[36], separate[36];
+    int sx, sy, dx, dy, w, h, x, y, i, same;
+    for (i = 0; i < 36; ++i)
+        original[i] = i % 5 == 0 ? 0xf81fu : (bb_u16)(i + 1);
+    for (same = 0; same <= 1; ++same)
+    for (sy = 0; sy < 6; ++sy) for (sx = 0; sx < 6; ++sx)
+    for (dy = 0; dy < 6; ++dy) for (dx = 0; dx < 6; ++dx)
+    for (h = 1; h <= 6 - sy && h <= 6 - dy; ++h)
+    for (w = 1; w <= 6 - sx && w <= 6 - dx; ++w) {
+        for (i = 0; i < 36; ++i) {
+            separate[i] = original[i];
+            actual[i] = expected[i] = same ? original[i] : (bb_u16)(100 + i);
+        }
+        for (y = 0; y < h; ++y) for (x = 0; x < w; ++x) {
+            bb_u16 p = original[(sy + y) * 6 + sx + x];
+            if (p != 0xf81fu) expected[(dy + y) * 6 + dx + x] = p;
+        }
+        bbvm_blit_pixels(actual, same ? actual : separate, 6,
+                         sx, sy, w, h, dx, dy, 0xf81fu);
+        expect(memcmp(actual, expected, sizeof(actual)) == 0,
+               "color-key copy matches source snapshot for all overlaps");
+    }
+}
+
 int main(void) {
     unsigned char *memory = (unsigned char *)malloc(BBVM_MEMORY_SIZE);
     unsigned char code[96];
     bbvm_host_t host = {0, host_alloc, host_free, host_tick, host_out};
     bbvm_t vm;
     unsigned int p = 0, handle, value;
+    test_pixel_copies();
     memset(code, 0, sizeof(code));
 
     /* LD.I r0, 7 */

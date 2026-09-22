@@ -52,6 +52,7 @@ int bda_main(void) {
     if (!bbvm_load(&vm, image, image_size)) {
         bda_msgbox("BBVM", bbvm_error_string(vm.error)); result = 3; goto cleanup;
     }
+    bda_free(image); image = 0;
     select_working_directory(selector.path);
     if (!bbvm_bda_start(&vm)) {
         bda_msgbox("BBVM", "Cannot create BBVM window"); result = 4; goto cleanup;
@@ -66,6 +67,7 @@ int bda_main(void) {
     }
 cleanup:
     bbvm_destroy(&vm);
-    bda_free(memory); bda_free(image);
+    bda_free(memory);
+    if (image != 0) bda_free(image);
     return result;
 }

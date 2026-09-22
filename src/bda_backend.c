@@ -1,6 +1,7 @@
 #include "bda_sdk.h"
 #include "bbvm_bda.h"
 #include "bbvm_lib.h"
+#include "bbvm_pixels.h"
 
 #define SCREEN_MAX_WIDTH 240
 #define SCREEN_MAX_HEIGHT 320
@@ -9,6 +10,8 @@
 #define FILE_COUNT 16
 #define KEY_QUEUE_SIZE 32
 #define GUI_GET_PIXEL_RGB 0x374u
+
+typedef int (*get_pixel_rgb_fn)(u32, u32, u32, u32 *, u32 *, u32 *);
 
 typedef struct picture {
     u16 *pixels;
@@ -21,7 +24,6 @@ typedef struct backend {
     bda_handle_t frame;
     bda_handle_t draw;
     bda_handle_t draw_owner;
-    bda_handle_t pages[PAGE_COUNT];
     u16 *page_pixels[PAGE_COUNT];
     u16 *visible_pixels;
     u16 *blit_pixels;
@@ -46,6 +48,7 @@ typedef struct backend {
     int pen_y[PAGE_COUNT + 1];
     int detached;
     int timer_started;
+    get_pixel_rgb_fn get_pixel_rgb;
 } backend_t;
 
 static backend_t g;
@@ -201,10 +204,11 @@ static void render_visible_region(int x, int y, int width, int height) {
     } else {
         if (g.blit_pixels == 0) return;
         source = g.blit_pixels;
-        for (row = 0; row < height; ++row)
-            for (column = 0; column < width; ++column)
-                source[row * width + column] =
-                    g.visible_pixels[(y + row) * g.screen_width + x + column];
+        for (row = 0; row < height; ++row) {
+            u16 *dst = source + row * width;
+            const u16 *src = g.visible_pixels + (y + row) * g.screen_width + x;
+            for (column = 0; column < width; ++column) *dst++ = *src++;
+        }
     }
 
     zero_bytes(&picture, sizeof(picture));
@@ -310,11 +314,8 @@ static u32 color_from_565(u16 pixel) {
 
 static u16 native_pixel_565(bda_handle_t context, int x, int y) {
     u32 red = 0, green = 0, blue = 0;
-    typedef int (*fn_t)(u32, u32, u32, u32 *, u32 *, u32 *);
-    fn_t fn;
     if (context == 0) return 0;
-    fn = (fn_t)bda_sdk_internal_api(bda_sdk_internal_gui(), GUI_GET_PIXEL_RGB);
-    (void)fn((u32)context, (u32)x, (u32)y, &red, &green, &blue);
+    (void)g.get_pixel_rgb((u32)context, (u32)x, (u32)y, &red, &green, &blue);
     return (u16)(((red & 0xf8u) << 8) | ((green & 0xfcu) << 3) |
                  ((blue & 0xffu) >> 3));
 }
@@ -329,8 +330,7 @@ static u32 get_pixel(int page, int x, int y) {
 static void copy_context(int source, int destination, int sx, int sy,
                          int width, int height, int dx, int dy) {
     u16 *src = page_surface(source), *dst = page_surface(destination);
-    int row, column;
-    if (src == 0 || dst == 0 || g.blit_pixels == 0 ||
+    if (src == 0 || dst == 0 ||
         width <= 0 || height <= 0) return;
     if (sx < 0) { dx -= sx; width += sx; sx = 0; }
     if (sy < 0) { dy -= sy; height += sy; sy = 0; }
@@ -342,19 +342,8 @@ static void copy_context(int source, int destination, int sx, int sy,
     if (dy + height > g.screen_height) height = g.screen_height - dy;
     if (width <= 0 || height <= 0) return;
 
-    /* Stage the source first so overlapping copies on one BB page have
-     * memmove semantics.  BB page blits always use RGB565 magenta as the
-     * transparent color, matching the historical renderer. */
-    for (row = 0; row < height; ++row)
-        for (column = 0; column < width; ++column)
-            g.blit_pixels[row * width + column] =
-                src[(sy + row) * g.screen_width + sx + column];
-    for (row = 0; row < height; ++row)
-        for (column = 0; column < width; ++column) {
-            u16 pixel = g.blit_pixels[row * width + column];
-            if (pixel != BDA_GUI_COLOR_KEY_MAGENTA_RGB565)
-                dst[(dy + row) * g.screen_width + dx + column] = pixel;
-        }
+    bbvm_blit_pixels(dst, src, g.screen_width, sx, sy, width, height,
+                     dx, dy, BDA_GUI_COLOR_KEY_MAGENTA_RGB565);
     if (destination < 0) render_visible_region(dx, dy, width, height);
 }
 
@@ -459,19 +448,12 @@ static void display_text(const char *text, int add_newline) {
 static int new_page(void) {
     int i;
     for (i = 0; i < PAGE_COUNT; ++i) {
-        if (g.pages[i] == 0) {
-            g.pages[i] = bda_gui_compatible_context_create(g.draw);
-            if (g.pages[i] == 0 || (s32)(u32)g.pages[i] == -1) {
-                g.pages[i] = 0; return -1;
-            }
+        if (g.page_pixels[i] == 0) {
             g.page_pixels[i] = (u16 *)bda_alloc(
                 (u32)SCREEN_MAX_WIDTH * (u32)SCREEN_MAX_HEIGHT * 2u);
             if (g.page_pixels[i] == 0) {
-                bda_gui_compatible_context_free(g.pages[i]);
-                g.pages[i] = 0;
                 return -1;
             }
-            select_object(g.pages[i]);
             fill_rect(i, 0, 0, g.screen_width, g.screen_height, 0u);
             return i;
         }
@@ -751,8 +733,7 @@ int bbvm_bda_out(void *opaque, bbvm_t *vm, bb_u32 port, bb_u32 argument) {
         case 17: vm->reg[BB_R3] = (u32)new_page(); break;
         case 18:
             index = (int)vm->reg[BB_R3];
-            if (index >= 0 && index < PAGE_COUNT && g.pages[index] != 0) {
-                bda_gui_compatible_context_free(g.pages[index]); g.pages[index] = 0;
+            if (index >= 0 && index < PAGE_COUNT) {
                 if (g.page_pixels[index] != 0) {
                     bda_free(g.page_pixels[index]); g.page_pixels[index] = 0;
                 }
@@ -932,6 +913,8 @@ int bbvm_bda_start(bbvm_t *vm) {
     bda_frame_desc_t descriptor;
     int i;
     zero_bytes(&g, sizeof(g));
+    g.get_pixel_rgb = (get_pixel_rgb_fn)bda_sdk_internal_api(
+        bda_sdk_internal_gui(), GUI_GET_PIXEL_RGB);
     g.vm = vm; g.screen_width = SCREEN_MAX_WIDTH; g.screen_height = SCREEN_MAX_HEIGHT;
     g.font_width = 6; g.font_height = 12; g.foreground = 0x00ffffffu;
     g.background = 0; g.text_transparent = 1;
@@ -976,9 +959,6 @@ void bbvm_bda_stop(void) {
     for (i = 0; i < FILE_COUNT; ++i) close_file((u32)i);
     for (i = 0; i < PICTURE_COUNT; ++i) free_picture(i);
     for (i = 0; i < PAGE_COUNT; ++i) {
-        if (g.pages[i] != 0) {
-            bda_gui_compatible_context_free(g.pages[i]); g.pages[i] = 0;
-        }
         if (g.page_pixels[i] != 0) {
             bda_free(g.page_pixels[i]); g.page_pixels[i] = 0;
         }
