@@ -1,0 +1,65 @@
+' Immutable block read. A missing resource is NEVER created.
+' Return exact byte count, or -1 open/path, -2 VM/count bounds,
+' -3 file/seek bounds, -4 short read. Maximum 65536 bytes per operation.
+FUNCTION RESREAD(PATH$,OFFSET,DEST,LENGTH)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,24")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r1,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r0,[r0]")
+    VASM("OUT 104,0")
+    VASM("LD int [vint_RESREAD],r3")
+END FUNCTION
+
+FUNCTION RESVERSION()
+    VASM("OUT 105,0")
+    VASM("LD int [vint_RESVERSION],r3")
+END FUNCTION
+
+' Bounded mutable save IO. Exact count or -1/-2/-3/-4, <=65536 bytes.
+FUNCTION SAVWRITE(PATH$,OFFSET,SOURCE,LENGTH)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,24")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r1,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r0,[r0]")
+    VASM("OUT 110,0")
+    VASM("LD int [vint_SAVWRITE],r3")
+END FUNCTION
+
+FUNCTION MEMCRC(SOURCE,LENGTH,STATE)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,20")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r1,[r0]")
+    VASM("OUT 111,0")
+    VASM("LD int [vint_MEMCRC],r3")
+END FUNCTION
+
+FUNCTION SAVVERSION()
+    VASM("OUT 112,0")
+    VASM("LD int [vint_SAVVERSION],r3")
+END FUNCTION
+
+FUNCTION SAVCOPY(SOURCE,DEST,LENGTH)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,20")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r1,[r0]")
+    VASM("OUT 113,0")
+    VASM("LD int [vint_SAVCOPY],r3")
+END FUNCTION

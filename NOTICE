@@ -10,3 +10,13 @@ holders are authorized to license. It does not license firmware, NAND images,
 original device applications, BBASIC games, LIB/SAV resources, trademarks, or
 external toolchains. Users must provide any third-party programs and resources
 that they are legally entitled to use.
+
+## 9688 extensions in this branch
+
+The 9688-specific VM, BDA, audio, mixer, resource and rendering extensions are
+provided as source in this repository. The rendering tone compatibility code
+is separately identified as GPL-3.0-or-later in `COPYING_RENDER_FX` and
+`RENDER_FX.md`; it is not covered by the Apache-2.0 notice above.
+
+No game BIN/LIB/IDX/SAV files, firmware, original BDA, proprietary compiler,
+linker or toolchain binaries are distributed by this repository.

@@ -1,0 +1,14 @@
+' MIXCMD packet layout and OUT ABI documented in src/bbvm_mixer.c.
+FUNCTION MIXCMD(PATH$,ADDRESS)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,16")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r3,[r0]")
+    VASM("OUT 108,0")
+    VASM("LD int [vint_MIXCMD],r3")
+END FUNCTION
+FUNCTION MIXVERSION()
+    VASM("OUT 109,0")
+    VASM("LD int [vint_MIXVERSION],r3")
+END FUNCTION

@@ -1,7 +1,7 @@
 # BBK9588-reBBasic
 
-[![CI](https://github.com/HelloClyde/BBK9588-reBBasic/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloClyde/BBK9588-reBBasic/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/HelloClyde/BBK9588-reBBasic?display_name=tag)](https://github.com/HelloClyde/BBK9588-reBBasic/releases)
+[![CI](https://github.com/9588A9588/BBK9588-reBBasic/actions/workflows/ci.yml/badge.svg)](https://github.com/9588A9588/BBK9588-reBBasic/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/HelloClyde/BBK9588-reBBasic?display_name=tag)](https://github.com/9588A9588/BBK9588-reBBasic/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 步步高 9588 `BB虚拟机.bda` 的可重新编译、功能兼容源码重建。项目使用
@@ -79,7 +79,7 @@ $env:BBK9588_SDK_ROOT = "D:\src\bbk9588-bda-sdk"
 ```
 
 不想本地编译时，也可以从
-[GitHub Releases](https://github.com/HelloClyde/BBK9588-reBBasic/releases)
+[GitHub Releases](https://github.com/9588A9588/BBK9588-reBBasic/releases)
 下载 CI 构建并校验过的 `BBK9588-reBBasic.bda` 和 `SHA256SUMS.txt`。
 
 ## 运行 BBASIC 程序
@@ -160,3 +160,35 @@ qa/                   原创固件级测试截图
 [Apache License 2.0](LICENSE)。该许可证不覆盖固件、NAND、原机应用、第三方游戏、
 资源、商标或外部工具链；详见 [NOTICE](NOTICE) 和
 [DATA_NOTICE.md](DATA_NOTICE.md)。
+
+## 9688 定向扩展
+
+本提交在保留原有解释器、图形、输入和 LIB 兼容性的基础上，加入了面向 9588/9688 BDA 的装载、资源、音频和渲染扩展：
+
+- 大 BIN 分块读取、单 VM 缓冲、有限重试和分阶段错误信息；
+- 非阻塞消息泵，避免必须快速点击才恢复运行；
+- `SOUND*`、`SOUNDPLAYRES` 和 BBAL v1 音频库；
+- `MIXCMD` 双逻辑通道混音、淡变、音高、播放一次状态和读档游标；
+- `RESREAD`/`SAVWRITE`/`MEMCRC`/`SAVCOPY` 分页资源与存档原语；
+- `RENDERFX` 地图图块、色调、闪光、局部变换和屏幕波形；
+- 9688 低内存缓存、MIPS32 热路径和 100% 音高音频批处理优化。
+
+详细改动、端口号、包结构、许可证和未验证边界见
+[`docs/BBVM_9688_CHANGES_ZH.md`](docs/BBVM_9688_CHANGES_ZH.md)、[`MIXER_API.md`](MIXER_API.md)、
+[`RESOURCE_LIBRARY_IO.md`](RESOURCE_LIBRARY_IO.md)、[`RENDER_FX.md`](RENDER_FX.md) 和
+[`AUDIO_LIBRARY_FORMAT.md`](AUDIO_LIBRARY_FORMAT.md)。
+
+### BB2.0++ 编译器路径
+
+仓库不携带 BBasic++/Blink 二进制。编译 BASIC 时设置外部工具目录：
+
+```powershell
+$env:BBASIC_TOOL_DIR = 'D:\tools\BB2.0++\Tool'
+python tools/compile_basic.py source.bas build/program.bin
+```
+
+构建助手会检查 `BBasic++.exe`、`Blink.exe`、`StdLib.lib` 和 `StdLib.fls`，不会回退到开发者电脑上的固定盘符。
+
+### 仓库边界
+
+游戏成品 BIN/LIB/IDX/SAV、固件和原厂 BDA 不在本仓库中。它们应放在独立的本地游戏资料目录；本仓库只提供可重编译的虚拟机、SDK 文本函数库、音频工具和不依赖商业资源的测试。

@@ -1,0 +1,77 @@
+' Prepend these definitions to your BASIC source (or use compile_basic.py).
+' Works with BB2.0++; requires the source-rebuilt audio BDA, not the old PC Sim VM.
+
+FUNCTION SOUNDPLAY(PATH$,REPEAT)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,16")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("OUT 96,0")
+    VASM("LD int [vint_SOUNDPLAY],r3")
+END FUNCTION
+
+FUNCTION SOUNDPLAYRES(PATH$,ID,REPEAT)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,20")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r1,[r0]")
+    VASM("OUT 103,0")
+    VASM("LD int [vint_SOUNDPLAYRES],r3")
+END FUNCTION
+
+FUNCTION SOUNDSTOP()
+    VASM("OUT 97,0")
+    SOUNDSTOP=0
+END FUNCTION
+
+FUNCTION SOUNDVOLUME(LEVEL)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,12")
+    VASM("LD int r3,[r0]")
+    VASM("OUT 98,0")
+    VASM("LD int [vint_SOUNDVOLUME],r3")
+END FUNCTION
+
+FUNCTION SOUNDUPDATE()
+    VASM("OUT 99,0")
+    SOUNDUPDATE=0
+END FUNCTION
+
+FUNCTION SOUNDTONE(HZ,MSEC)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,16")
+    VASM("LD int r3,[r0]")
+    VASM("CAL int ADD r0,-4")
+    VASM("LD int r2,[r0]")
+    VASM("OUT 100,0")
+    VASM("LD int [vint_SOUNDTONE],r3")
+END FUNCTION
+
+FUNCTION SOUNDPAUSE()
+    VASM("OUT 101,0")
+    SOUNDPAUSE=0
+END FUNCTION
+
+FUNCTION SOUNDRESUME()
+    VASM("OUT 102,0")
+    SOUNDRESUME=0
+END FUNCTION
+
+FUNCTION SOUNDBUSY()
+    VASM("IN r3,96")
+    VASM("LD int [vint_SOUNDBUSY],r3")
+END FUNCTION
+
+FUNCTION SOUNDERROR()
+    VASM("IN r3,97")
+    VASM("LD int [vint_SOUNDERROR],r3")
+END FUNCTION
+
+FUNCTION SOUNDVERSION()
+    VASM("IN r3,98")
+    VASM("LD int [vint_SOUNDVERSION],r3")
+END FUNCTION

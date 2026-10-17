@@ -15,6 +15,9 @@ static int host_out(void *opaque, bbvm_t *vm, bb_u32 port, bb_u32 argument) {
     (void)opaque; (void)vm; ++output_count; last_port = port; last_argument = argument;
     return 1;
 }
+static bb_u32 host_in(void *opaque, bbvm_t *vm, bb_u32 port) {
+    (void)opaque; (void)vm; (void)port; return 0;
+}
 
 static void put32(unsigned char *p, unsigned int v) {
     p[0] = (unsigned char)v; p[1] = (unsigned char)(v >> 8);
@@ -53,7 +56,7 @@ static void test_pixel_copies(void) {
 int main(void) {
     unsigned char *memory = (unsigned char *)malloc(BBVM_MEMORY_SIZE);
     unsigned char code[96];
-    bbvm_host_t host = {0, host_alloc, host_free, host_tick, host_out};
+    bbvm_host_t host = {0, host_alloc, host_free, host_tick, host_out, host_in};
     bbvm_t vm;
     unsigned int p = 0, handle, value;
     test_pixel_copies();

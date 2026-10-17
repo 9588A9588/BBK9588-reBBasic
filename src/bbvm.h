@@ -36,6 +36,7 @@ typedef void (*bbvm_free_fn)(void *opaque, void *pointer);
 typedef bb_u32 (*bbvm_tick_fn)(void *opaque);
 typedef int (*bbvm_out_fn)(void *opaque, struct bbvm *vm, bb_u32 port,
                            bb_u32 argument);
+typedef bb_u32 (*bbvm_in_fn)(void *opaque, struct bbvm *vm, bb_u32 port);
 
 typedef struct bbvm_host {
     void *opaque;
@@ -43,6 +44,7 @@ typedef struct bbvm_host {
     bbvm_free_fn free;
     bbvm_tick_fn tick_ms;
     bbvm_out_fn out_port;
+    bbvm_in_fn in_port;
 } bbvm_host_t;
 
 typedef struct bbvm_string {
@@ -69,6 +71,7 @@ typedef struct bbvm {
 void bbvm_init(bbvm_t *vm, bb_u8 *memory, bb_u32 memory_size,
                const bbvm_host_t *host);
 void bbvm_destroy(bbvm_t *vm);
+/* image may equal vm->memory; a BBE header is compacted safely in place. */
 int bbvm_load(bbvm_t *vm, const bb_u8 *image, bb_u32 size);
 int bbvm_step(bbvm_t *vm);
 int bbvm_run(bbvm_t *vm, bb_u32 instruction_budget);

@@ -49,6 +49,10 @@ SOURCES = (
     PROJECT / "src" / "bbvm_runtime.c",
     PROJECT / "src" / "bbvm_lib.c",
     PROJECT / "src" / "bda_backend.c",
+    PROJECT / "src" / "bbvm_audio.c",
+    PROJECT / "src" / "bbvm_audio_ports.c",
+    PROJECT / "src" / "bbvm_mixer.c",
+    PROJECT / "src" / "bda_audio_backend.c",
 )
 
 
@@ -67,7 +71,7 @@ def tool(name: str) -> str:
     raise SystemExit(f"missing mipsel-none-elf-{name}; run scripts/setup_toolchain.ps1")
 
 
-def compile_image(work: Path) -> bytes:
+def compile_image(work: Path, artifacts: Path | None = None) -> bytes:
     cc = tool("gcc")
     objcopy = tool("objcopy")
     common = [
@@ -79,7 +83,10 @@ def compile_image(work: Path) -> bytes:
     objects: list[Path] = []
     for source in SOURCES:
         obj = work / f"{source.stem}.o"
-        run([cc, *common, "-c", str(source), "-o", str(obj)], f"CC {source.name}")
+        # Optimize the interpreter's hot loop for the MIPS CPU, not code size.
+        # Keep soft-float, bounded unaligned loads, and strict FP semantics.
+        hot = ["-O2"] if source.name == "bbvm_core.c" else []
+        run([cc, *common, *hot, "-c", str(source), "-o", str(obj)], f"CC {source.name}")
         objects.append(obj)
 
     script = work / "bbvm.ld"
@@ -109,12 +116,21 @@ SECTIONS
         "LD",
     )
     run([objcopy, "-O", "binary", str(elf), str(raw)], "OBJCOPY")
+    artifacts = artifacts or PROJECT / "build"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(elf, artifacts / "bbvm.elf")
+    shutil.copy2(map_file, artifacts / "bbvm.map")
     return raw.read_bytes()
 
 
-def package(code: bytes, output: Path, title: str) -> None:
+def package(code: bytes, output: Path, title: str, icon_template: Path | None = None) -> None:
     data = bytearray(b"\0" * ENTRY_OFFSET)
     icons = build_icons(None, (0, 32, 64))
+    if icon_template is not None:
+        template = icon_template.read_bytes()
+        if len(template) < ENTRY_OFFSET:
+            raise SystemExit("icon template too short")
+        icons = template[ICON_START:ENTRY_OFFSET]
     expected = ENTRY_OFFSET - ICON_START
     if len(icons) != expected:
         raise SystemExit(f"icon region is {len(icons):#x}, expected {expected:#x}")
@@ -148,10 +164,13 @@ def main() -> None:
     parser.add_argument("-o", "--output", type=Path,
                         default=PROJECT / "build" / "BB虚拟机-re.bda")
     parser.add_argument("--title", default="BB虚拟机")
+    parser.add_argument("--icon-template", type=Path)
+    parser.add_argument("--artifacts-dir", type=Path,
+                        help="Write matching ELF/map separately; do not overwrite frozen artifacts")
     args = parser.parse_args()
     (PROJECT / "build").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="re_bbasic_") as directory:
-        package(compile_image(Path(directory)), args.output.resolve(), args.title)
+        package(compile_image(Path(directory), args.artifacts_dir), args.output.resolve(), args.title, args.icon_template)
 
 
 if __name__ == "__main__":

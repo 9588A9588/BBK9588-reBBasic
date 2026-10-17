@@ -102,9 +102,22 @@ static float bits_float(bb_u32 value) {
 
 static float reduce_angle(float x) {
     const float pi2 = 6.28318530718f;
-    while (x > 3.14159265359f) x -= pi2;
-    while (x < -3.14159265359f) x += pi2;
-    return x;
+    union { bb_u32 u; float f; } value;
+    float scale;
+    bb_u32 sign;
+    value.f = x; sign = value.u & 0x80000000u;
+    /* Infinity never converges in the old repeated-subtraction loop. */
+    if ((value.u & 0x7f800000u) == 0x7f800000u) return 0.0f;
+    value.u &= 0x7fffffffu;
+    scale = pi2;
+    /* At most ~126 doublings/reductions for any finite binary32 input. */
+    while (scale <= value.f * 0.5f) scale *= 2.0f;
+    while (scale >= pi2) {
+        if (value.f >= scale) value.f -= scale;
+        scale *= 0.5f;
+    }
+    if (value.f > 3.14159265359f) value.f -= pi2;
+    return sign != 0u ? -value.f : value.f;
 }
 
 static float fast_sin(float x) {
@@ -134,9 +147,13 @@ static int valid_handle(bbvm_t *vm, bb_u32 handle, bb_u32 *index) {
 }
 
 const char *bbvm_get_string(bbvm_t *vm, bb_u32 value) {
-    bb_u32 index;
+    bb_u32 index, end;
     if (valid_handle(vm, value, &index)) return vm->strings[index].data;
-    if (value < vm->memory_size) return (const char *)(vm->memory + value);
+    if (value < vm->memory_size) {
+        for (end=value; end<vm->memory_size; ++end)
+            if (vm->memory[end]==0) return (const char *)(vm->memory+value);
+        vm->error=BBVM_ERR_MEMORY; vm->running=0;
+    }
     return "";
 }
 
@@ -196,13 +213,17 @@ int bbvm_set_string(bbvm_t *vm, bb_u32 handle, const char *value) {
 
 static int append_string(bbvm_t *vm, bb_u32 handle, const char *value) {
     bb_u32 index, add, i;
+    int self;
     if (!valid_handle(vm, handle, &index)) return 0;
+    self=value==vm->strings[index].data;
     add = string_length(value);
     if (!ensure_capacity(vm, &vm->strings[index],
                          vm->strings[index].length + add + 1u)) return 0;
-    for (i = 0; i <= add; ++i)
+    if (self) value=vm->strings[index].data;
+    for (i = 0; i < add; ++i)
         vm->strings[index].data[vm->strings[index].length + i] = value[i];
     vm->strings[index].length += add;
+    vm->strings[index].data[vm->strings[index].length] = '\0';
     return 1;
 }
 
@@ -297,7 +318,15 @@ bb_u32 bbvm_in_port(bbvm_t *vm, bb_u32 port) {
             found = string_find(a + r1, b);
             return found == 0 ? 0xffffffffu : (bb_u32)(found - a);
         case 39: return string_length(bbvm_get_string(vm, r3));
+        case 40: return r3 << (r2 & 31u);
+        case 41: return r3 >> (r2 & 31u);
+        case 42: return ~r3;
+        case 43: return r3 & r2;
+        case 44: return r3 | r2;
+        case 45: return r3 ^ r2;
         default:
+            if (vm->host.in_port != 0)
+                return vm->host.in_port(vm->host.opaque, vm, port);
             vm->error = BBVM_ERR_PORT; vm->running = 0; return 0;
     }
 }

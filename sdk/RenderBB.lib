@@ -1,0 +1,14 @@
+' RENDERFX takes the VM address of a validated 21-word render packet.
+' See RENDER_FX.md. Historical SHOWPIC is unchanged.
+FUNCTION RENDERFX(ADDR)
+    VASM("LD int r0,rb")
+    VASM("CAL int ADD r0,12")
+    VASM("LD int r3,[r0]")
+    VASM("OUT 106,0")
+    VASM("LD int [vint_RENDERFX],r3")
+END FUNCTION
+
+FUNCTION RENDERVERSION()
+    VASM("OUT 107,0")
+    VASM("LD int [vint_RENDERVERSION],r3")
+END FUNCTION

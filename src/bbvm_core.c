@@ -7,6 +7,21 @@ static const bb_u8 type_size[5] = {4, 2, 1, 4, 4};
 
 static void bytes_zero(void *pointer, bb_u32 size) {
     bb_u8 *p = (bb_u8 *)pointer;
+    /* VM startup clears 2 MiB. Word stores cut loop/branch overhead without
+     * libc, unaligned accesses, or writing beyond a short destination.
+     * may_alias is required because this also initializes mixed-type structs. */
+    typedef bb_u32 bb_zero_word __attribute__((__may_alias__));
+    while (size != 0u && (((__UINTPTR_TYPE__)p) & 3u) != 0u) {
+        *p++ = 0; --size;
+    }
+    while (size >= 16u) {
+        bb_zero_word *w = (bb_zero_word *)p;
+        w[0] = 0u; w[1] = 0u; w[2] = 0u; w[3] = 0u;
+        p += 16; size -= 16u;
+    }
+    while (size >= 4u) {
+        *(bb_zero_word *)p = 0u; p += 4; size -= 4u;
+    }
     while (size-- != 0u) *p++ = 0;
 }
 
@@ -24,6 +39,12 @@ static int fail(bbvm_t *vm, int error) {
 
 static int range_ok(bbvm_t *vm, bb_u32 address, bb_u32 size) {
     return address <= vm->memory_size && size <= vm->memory_size - address;
+}
+
+static inline bb_u32 read_le32(const bb_u8 *p) {
+    /* BBASIC bytecode is unaligned. Never cast it to a MIPS word pointer. */
+    return (bb_u32)p[0] | ((bb_u32)p[1] << 8) |
+           ((bb_u32)p[2] << 16) | ((bb_u32)p[3] << 24);
 }
 
 static bb_u32 raw_read(bbvm_t *vm, bb_u32 address, bb_u32 size) {
@@ -60,7 +81,7 @@ int bbvm_write_u32(bbvm_t *vm, bb_u32 address, bb_u32 value) {
     return raw_write(vm, address, value, 4u);
 }
 
-static bb_u32 get_data(bbvm_t *vm, bb_u32 mode, bb_u32 argument) {
+static inline __attribute__((always_inline)) bb_u32 get_data(bbvm_t *vm, bb_u32 mode, bb_u32 argument) {
     switch (mode) {
         case 0: return argument < 8u ? vm->reg[argument]
                                     : (fail(vm, BBVM_ERR_OPERAND), 0u);
@@ -72,7 +93,7 @@ static bb_u32 get_data(bbvm_t *vm, bb_u32 mode, bb_u32 argument) {
     }
 }
 
-static int put_data(bbvm_t *vm, bb_u32 mode, bb_u32 argument,
+static inline __attribute__((always_inline)) int put_data(bbvm_t *vm, bb_u32 mode, bb_u32 argument,
                     bb_u32 value, bb_u32 data_type) {
     bb_u32 size;
     bb_u32 mask;
@@ -149,6 +170,7 @@ void bbvm_init(bbvm_t *vm, bb_u8 *memory, bb_u32 memory_size,
         vm->host.free = host->free;
         vm->host.tick_ms = host->tick_ms;
         vm->host.out_port = host->out_port;
+        vm->host.in_port = host->in_port;
     }
     if (memory != 0) bytes_zero(memory, memory_size);
 }
@@ -176,10 +198,17 @@ int bbvm_load(bbvm_t *vm, const bb_u8 *image, bb_u32 size) {
         vm->image_version = 19;
     }
     payload = size - offset;
-    if (payload + BBVM_STACK_SIZE + 4u > vm->memory_size)
+    if (vm->memory_size < BBVM_STACK_SIZE + 4u ||
+        payload > vm->memory_size - BBVM_STACK_SIZE - 4u)
         return fail(vm, BBVM_ERR_IMAGE);
-    bytes_zero(vm->memory, vm->memory_size);
-    bytes_copy(vm->memory, image + offset, payload);
+    if (image == vm->memory) {
+        /* Copy left before clearing its tail: safe for the BBE header overlap. */
+        if (offset != 0u) bytes_copy(vm->memory, image + offset, payload);
+        bytes_zero(vm->memory + payload, vm->memory_size - payload);
+    } else {
+        bytes_zero(vm->memory, vm->memory_size);
+        bytes_copy(vm->memory, image + offset, payload);
+    }
     vm->image_size = payload;
     vm->data_ptr = 0;
     bytes_zero(vm->reg, (bb_u32)sizeof(vm->reg));
@@ -204,19 +233,19 @@ int bbvm_step(bbvm_t *vm) {
         return fail(vm, BBVM_ERR_OPCODE);
     if (length == 5u) {
         first_mode = vm->memory[ip] & 15u;
-        first = raw_read(vm, ip + 1u, 4u);
+        first = read_le32(vm->memory + ip + 1u);
     } else if (length == 6u) {
         flag = vm->memory[ip] & 15u;
         first_mode = vm->memory[ip + 1u];
-        first = raw_read(vm, ip + 2u, 4u);
+        first = read_le32(vm->memory + ip + 2u);
     } else if (length == 10u) {
         type = vm->memory[ip] & 15u;
         if (type > 4u) return fail(vm, BBVM_ERR_OPERAND);
         operation = vm->memory[ip + 1u] >> 4;
         first_mode = (vm->memory[ip + 1u] & 15u) >> 2;
         second_mode = vm->memory[ip + 1u] & 3u;
-        first = raw_read(vm, ip + 2u, 4u);
-        second = raw_read(vm, ip + 6u, 4u);
+        first = read_le32(vm->memory + ip + 2u);
+        second = read_le32(vm->memory + ip + 6u);
     }
     if (!vm->running) return 0;
     switch (command) {
@@ -303,11 +332,13 @@ int bbvm_step(bbvm_t *vm) {
                 bb_s32 b = narrowed_signed(right, type);
                 if ((operation == 3u || operation == 4u) && b == 0)
                     return fail(vm, BBVM_ERR_DIV_ZERO);
-                if (operation == 0u) result = (bb_u32)(a + b);
-                else if (operation == 1u) result = (bb_u32)(a - b);
-                else if (operation == 2u) result = (bb_u32)(a * b);
-                else if (operation == 3u) result = (bb_u32)(a / b);
-                else if (operation == 4u) result = (bb_u32)(a % b);
+                if (operation == 0u) result = (bb_u32)a + (bb_u32)b;
+                else if (operation == 1u) result = (bb_u32)a - (bb_u32)b;
+                else if (operation == 2u) result = (bb_u32)a * (bb_u32)b;
+                else if (operation == 3u)
+                    result = a == (-2147483647-1) && b == -1 ? 0x80000000u : (bb_u32)(a / b);
+                else if (operation == 4u)
+                    result = a == (-2147483647-1) && b == -1 ? 0u : (bb_u32)(a % b);
                 else return fail(vm, BBVM_ERR_OPERAND);
             }
             if (!put_data(vm, first_mode, first, result, type)) return 0;
