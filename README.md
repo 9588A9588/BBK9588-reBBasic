@@ -1,8 +1,35 @@
 # BBK9588-reBBasic
 
 [![CI](https://github.com/9588A9588/BBK9588-reBBasic/actions/workflows/ci.yml/badge.svg)](https://github.com/9588A9588/BBK9588-reBBasic/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/HelloClyde/BBK9588-reBBasic?display_name=tag)](https://github.com/9588A9588/BBK9588-reBBasic/releases)
+[![Release](https://img.shields.io/github/v/release/9588A9588/BBK9588-reBBasic?display_name=tag)](https://github.com/9588A9588/BBK9588-reBBasic/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+## 这次改版首先要解决什么
+
+本项目当前改版的重点不是先展示代码，而是先解决步步高 9588/9688 真机运行
+BBASIC 程序时最影响使用的问题：程序加载容易卡死、大 BIN 读取不稳定、输入
+服务阻塞导致运行速度异常、没有可复用的音频接口，以及大型图片、地图和资源
+需要整块读入内存的问题。
+
+本分支要实现的功能和对应原因如下：
+
+| 要实现的功能 | 修改原因 |
+|---|---|
+| 稳定加载较大的 BBASIC BIN，并在失败时给出明确阶段提示 | 旧的整块读取和异常短读处理容易在大程序或慢文件服务下死机，用户无法判断是路径、文件还是内存问题 |
+| 加入 WAV 播放、音调、暂停、音量、循环和音频库播放 | 原有 BB 虚拟机没有公开、可复用的音频接口，游戏只能无声运行或各自重复实现 |
+| 用 BBAL 音频库把背景音乐和音效集中存储 | 避免 SD 卡中产生大量散乱音频文件，并减少真机频繁打开文件的开销 |
+| 加入 BGM + 音效的双逻辑通道混音 | 游戏需要背景音乐和攻击、受击、菜单等音效同时存在，但 9588 只有有限的硬件资源，必须在虚拟机内协作混音 |
+| 增加分页资源读取、资源缓存和存档辅助接口 | 9688 的内存和文件访问速度有限，不能把大型图片、地图或音频库一次性全部载入 |
+| 增加图片色调、闪光、旋转、缩放、波形和地图图块批处理 | 将高频画面操作从 BBASIC 逐像素调用下沉到 C 端，减少卡顿，同时保持 240×320 原始坐标 |
+| 修复输入/消息泵的阻塞路径并采用有界调度 | 避免出现“快速点击按键后游戏才变快、松开按键就像卡住”的错误表现 |
+| 保留旧 BBASIC BIN、LIB、按键和文件接口的兼容性 | 改版的目标是让已有程序继续运行，而不是强迫所有游戏重写 |
+
+这些修改是根据 9588/9688 的 MIPS32、低内存、非 Linux BDA 环境设计的，不是
+把 ARM/Linux 模拟器原样搬过来，也不依赖超频或未公开的音频/时钟硬件寄存器。
+源码、接口包格式、测试方法和已知限制在后文及
+[`docs/BBVM_9688_CHANGES_ZH.md`](docs/BBVM_9688_CHANGES_ZH.md) 中详细说明。
+
+## 项目简介
 
 步步高 9588 `BB虚拟机.bda` 的可重新编译、功能兼容源码重建。项目使用
 [BBK 9588 Native BDA SDK](https://github.com/HelloClyde/bbk9588-bda-sdk)
@@ -192,3 +219,4 @@ python tools/compile_basic.py source.bas build/program.bin
 ### 仓库边界
 
 游戏成品 BIN/LIB/IDX/SAV、固件和原厂 BDA 不在本仓库中。它们应放在独立的本地游戏资料目录；本仓库只提供可重编译的虚拟机、SDK 文本函数库、音频工具和不依赖商业资源的测试。
+
